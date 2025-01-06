@@ -9,7 +9,8 @@ const FaceDetection = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [faceImages, setFaceImages] = useState<string[]>([]);
   const [isVideoRunning, setIsVideoRunning] = useState(false);
-  const [timer, setTimer] = useState<NodeJS.Timeout | null>(null);
+  const [intervalId, setIntervalId] = useState<NodeJS.Timeout | null>(null);
+  const MAX_IMAGES = 20; // Maximum number of images to capture
 
   useEffect(() => {
     const loadModels = async () => {
@@ -22,16 +23,12 @@ const FaceDetection = () => {
         await faceapi.nets.ageGenderNet.loadFromUri(MODEL_URL);
         await faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL);
       } catch (error) {
-        console.log("getting error on loading model", error);
+        console.error("Error loading models:", error);
       }
     };
 
     loadModels();
   }, []);
-
-  useEffect(() => {
-    console.log("timer", timer);
-  });
 
   const startVideo = () => {
     navigator.mediaDevices
@@ -61,9 +58,9 @@ const FaceDetection = () => {
       videoRef.current.srcObject = null;
     }
     setIsVideoRunning(false);
-    if (timer) {
-      clearTimeout(timer);
-      setTimer(null);
+    if (intervalId) {
+      clearInterval(intervalId);
+      setIntervalId(null);
     }
   };
 
@@ -71,10 +68,6 @@ const FaceDetection = () => {
     setFaceImages([]);
     setIsVideoRunning(true);
     startVideo();
-    const newTimer = setTimeout(() => {
-      stopVideo();
-    }, 30000);
-    setTimer(newTimer);
   };
 
   const handleVideoPlay = async () => {
@@ -86,9 +79,10 @@ const FaceDetection = () => {
         height: videoRef.current.height,
       });
 
-      const interval = setInterval(async () => {
-        if (!isVideoRunning) {
-          clearInterval(interval);
+      const id = setInterval(async () => {
+        if (!isVideoRunning || faceImages.length >= MAX_IMAGES) {
+          clearInterval(id);
+          stopVideo();
           return;
         }
 
@@ -133,23 +127,29 @@ const FaceDetection = () => {
           );
 
           const imageUrl = faceCanvas.toDataURL();
-          setFaceImages((prevImages) => [...prevImages, imageUrl]);
+          setFaceImages((prevImages) => {
+            if (prevImages.length < MAX_IMAGES) {
+              return [...prevImages, imageUrl];
+            } else {
+              return prevImages;
+            }
+          });
         }
       }, 100);
+      setIntervalId(id);
     }
   };
 
   return (
     <div className="flex flex-col items-center">
       {faceImages.length > 0 ? (
-        <p>Total Images {faceImages.length}</p>
+        <p>Total Images: {faceImages.length}</p>
       ) : (
         <Button onClick={handleStart} disabled={isVideoRunning}>
           Start Video
         </Button>
       )}
 
-     
       <div style={{ position: "relative", width: "30%", height: "auto" }}>
         <video
           ref={videoRef}
@@ -170,31 +170,23 @@ const FaceDetection = () => {
         />
       </div>
 
-
-      {
-        faceImages.length == 0 && isVideoRunning == true ? <p>Please wait few seconds</p> :""
-      }
-
-      {/* button clicked and image zero */}
+      {faceImages.length === 0 && isVideoRunning && (
+        <p>Please wait a few seconds...</p>
+      )}
 
       <div className="mt-4 grid grid-cols-3 gap-4">
-        {faceImages.length > 0 ? faceImages.map((img, index) => (
-          <Image
-            key={index}
-            src={img}
-            height={100}
-            width={100}
-            alt={`Face ${index + 1}`}
-          />
-        )) : <p>no images</p>   }
+        {faceImages.length > 0 ? (
+          faceImages.map((img, index) => (
+            <Image
+              key={index}
+              src={img}
+              height={100}
+              width={100}
+              alt={`Face ${index + 1}`}
+            />
+          ))
+        ) : ""}
       </div>
-
-      
-
-
-      
-      
-      
     </div>
   );
 };
